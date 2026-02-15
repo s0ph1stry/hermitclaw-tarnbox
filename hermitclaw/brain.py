@@ -125,7 +125,8 @@ class Brain:
 
     # File extensions we can read as text
     _TEXT_EXTS = {".txt", ".md", ".py", ".json", ".csv", ".yaml", ".yml",
-                  ".toml", ".js", ".ts", ".html", ".css", ".sh", ".log", ".pdf"}
+                  ".toml", ".js", ".ts", ".html", ".css", ".sh", ".log"}
+    _PDF_EXTS = {".pdf"}
     _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
     # Internal files the crab/system manages — never trigger alerts
     _IGNORE_FILES = {"memory_stream.jsonl", "identity.json"}
@@ -357,7 +358,21 @@ class Brain:
                 continue
             ext = os.path.splitext(rel_path)[1].lower()
             entry: dict = {"name": rel_path, "content": "", "image": None}
-            if ext in Brain._TEXT_EXTS:
+            if ext in Brain._PDF_EXTS:
+                try:
+                    import pymupdf
+                    doc = pymupdf.open(fpath)
+                    pages = []
+                    for page in doc:
+                        pages.append(page.get_text())
+                    doc.close()
+                    text = "\n\n".join(pages)
+                    entry["content"] = text[:4000] if text.strip() else "(PDF has no extractable text)"
+                except ImportError:
+                    entry["content"] = "(install pymupdf to read PDFs: pip install pymupdf)"
+                except Exception:
+                    entry["content"] = "(could not read PDF)"
+            elif ext in Brain._TEXT_EXTS:
                 try:
                     text = open(fpath, "r", errors="replace").read()
                     entry["content"] = text[:2000]
