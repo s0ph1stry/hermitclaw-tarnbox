@@ -397,7 +397,6 @@ export default function App() {
     <div style={page}>
       <div style={headerBar}>
         <img src="/icon.png" alt="HermitClaw" style={headerIcon} />
-        <span style={headerTitle}>HermitClaw</span>
       </div>
       <div style={twoPane}>
         {/* Left pane — Game world */}
@@ -543,24 +542,16 @@ const page: React.CSSProperties = {
 const headerBar: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 20,
-  padding: "20px 32px",
+  justifyContent: "center",
+  padding: "12px 32px",
   background: "#1a1a2e",
   borderBottom: "1px solid #2a2a4a",
   flexShrink: 0,
 };
 
 const headerIcon: React.CSSProperties = {
-  width: 64,
-  height: 64,
-  borderRadius: 12,
-};
-
-const headerTitle: React.CSSProperties = {
-  fontSize: 36,
-  fontWeight: 800,
-  color: "#e2e8f0",
-  letterSpacing: "0.5px",
+  maxWidth: "100%",
+  maxHeight: 80,
 };
 
 const twoPane: React.CSSProperties = {
