@@ -130,6 +130,8 @@ class Brain:
     _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
     # Internal files the crab/system manages — never trigger alerts
     _IGNORE_FILES = {"memory_stream.jsonl", "identity.json"}
+    # Internal files that live in the root but shouldn't trigger inbox alerts
+    _INTERNAL_ROOT_FILES = {"projects.md"}
 
     # Planning frequency — plan every N think cycles
     PLAN_INTERVAL = 10
@@ -775,7 +777,13 @@ class Brain:
         # Heavy init — runs in background thread so the event loop stays free
         await asyncio.to_thread(ensure_venv, self.env_path)
         self.stream = await asyncio.to_thread(MemoryStream, self.env_path)
-        self._seen_env_files = self._scan_env_files()
+        # Mark subdirectory files as "seen" but leave root-level user files
+        # (PDFs, images, etc.) as unseen so they trigger inbox alerts on first cycle
+        all_files = self._scan_env_files()
+        self._seen_env_files = {
+            f for f in all_files
+            if os.sep in f or f in Brain._INTERNAL_ROOT_FILES
+        }
         self._current_focus = self._load_current_focus()
 
         logger.info(f"{self.identity['name']} is ready.")
