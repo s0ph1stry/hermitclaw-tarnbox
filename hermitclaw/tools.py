@@ -86,9 +86,12 @@ def _is_safe_command(command: str) -> str | None:
 
     # Block absolute paths — only relative paths from environment/ are allowed.
     # Check each whitespace-separated token; strip leading shell operators.
+    # Only flag tokens where / is followed by a word char (actual paths like /usr/bin),
+    # not markup like /> or /' or /" which appear in XML/HTML/SVG content.
+    import re
     for token in stripped.split():
         clean = token.lstrip("><=|;&(")
-        if clean.startswith("/") and not clean.startswith("/dev/null"):
+        if re.match(r"/[A-Za-z0-9_]", clean) and not clean.startswith("/dev/null"):
             return "Blocked: absolute paths are not allowed. Use relative paths only."
 
     return None
