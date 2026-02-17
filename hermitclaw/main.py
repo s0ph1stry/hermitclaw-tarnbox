@@ -1,5 +1,7 @@
 """Entry point — multi-crab discovery + onboarding + starts the server."""
 
+from __future__ import annotations
+
 import glob
 import json
 import logging
@@ -26,6 +28,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 
 def _crab_id_from_box(box_path: str) -> str:
     """Derive crab ID from box directory name: coral_box -> coral."""
+
     dirname = os.path.basename(box_path)
     if dirname.endswith("_box"):
         return dirname[:-4]
@@ -69,7 +72,10 @@ if __name__ == "__main__":
     if brains:
         names = [b.identity["name"] for b in brains.values()]
         print(f"\n  Found {len(brains)} crab(s): {', '.join(names)}")
-        answer = input("  Create a new one? (y/N) > ").strip().lower()
+        try:
+            answer = input("  Create a new one? (y/N) > ").strip().lower()
+        except EOFError:
+            answer = "n"
         if answer == "y":
             identity = create_identity()
             crab_id = identity["name"].lower()

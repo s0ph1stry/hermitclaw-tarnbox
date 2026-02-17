@@ -1,5 +1,7 @@
 """Smallville-inspired memory stream with three-factor retrieval."""
 
+from __future__ import annotations
+
 import json
 import logging
 import math
@@ -18,6 +20,7 @@ STREAM_FILENAME = "memory_stream.jsonl"
 
 def _cosine_sim(a: list[float], b: list[float]) -> float:
     """Pure-Python cosine similarity — no numpy needed."""
+
     dot = sum(x * y for x, y in zip(a, b))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
@@ -59,7 +62,7 @@ class MemoryStream:
         logger.info(f"Loaded {len(self.memories)} memories from stream")
 
     def add(self, content: str, kind: str = "thought", depth: int = 0,
-            references: list[str] | None = None) -> dict:
+            references=None) -> dict:
         """Score importance, compute embedding, append to stream."""
         # Score importance via LLM
         importance = self._score_importance(content)

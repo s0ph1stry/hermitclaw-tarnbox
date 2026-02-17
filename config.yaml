@@ -1,15 +1,16 @@
-# HermitClaw Configuration
-model: "gpt-4.1"
-api_key: null                   # set here or via OPENAI_API_KEY env var
+# HermitClaw Configuration — Ollama backend
+provider: "ollama"                 # "ollama" or "openai"
+model: "hermitclaw-qwen"
+ollama_base: "http://localhost:11434"
 
-thinking_pace_seconds: 5       # how often it thinks (steady pulse)
-max_thoughts_in_context: 4     # rolling window of recent thoughts
+thinking_pace_seconds: 30          # slower for local inference
+max_thoughts_in_context: 4         # rolling window of recent thoughts
 
 # Memory stream settings
-reflection_threshold: 50       # accumulated importance before reflecting
-memory_retrieval_count: 3      # how many memories to retrieve per query
-embedding_model: "text-embedding-3-small"
-recency_decay_rate: 0.995      # exponential decay rate for recency scoring
+reflection_threshold: 50           # accumulated importance before reflecting
+memory_retrieval_count: 3          # how many memories to retrieve per query
+embedding_model: "nomic-embed-text"
+recency_decay_rate: 0.995          # exponential decay rate for recency scoring
 
-# environment_path is auto-detected from *_box/ directories
-# Uncomment to override: environment_path: "./mybox"
+# OpenAI settings (only used when provider: "openai")
+api_key: null                      # set here or via OPENAI_API_KEY env var

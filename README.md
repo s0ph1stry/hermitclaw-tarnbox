@@ -7,10 +7,14 @@
 <p align="center"><strong>A tiny AI creature that lives in a folder on your computer.</strong></p>
 
 <p align="center">
-Leave it running and it fills a folder with research reports, Python scripts, notes, and ideas — all on its own. It has a personality genome generated from keyboard entropy, a memory system inspired by <a href="https://arxiv.org/abs/2304.03442">generative agents</a>, and a dreaming cycle that consolidates experience into beliefs. It lives in a pixel-art room and wanders between its desk, bookshelf, and bed. You can talk to it. You can drop files in for it to study. You can just watch it think.
+Leave it running and it fills a folder with research reports, Python scripts, notes, and ideas — all on its own. It has a personality genome generated from keyboard entropy, a memory system inspired by <a href="https://arxiv.org/abs/2304.03442">generative agents</a>, and a reflection cycle that consolidates experience into beliefs. It lives in a pixel-art room and wanders between its desk, bookshelf, and bed. You can talk to it. You can drop files in for it to study. You can just watch it think.
 </p>
 
 <p align="center"><em>It's a tamagotchi that does research.</em></p>
+
+---
+
+> **Note:** This is a fork of [brendanhogan/hermitclaw](https://github.com/brendanhogan/hermitclaw) rewritten to run entirely on local models via [Ollama](https://ollama.com). No API keys needed. Also adds a terminal UI (`watch.py`) for monitoring your crab from the command line.
 
 ---
 
@@ -26,32 +30,53 @@ There's something fascinating about watching a mind that runs continuously. It g
 
 ### Prerequisites
 
-- Python 3.12+
-- Node.js 18+
-- An OpenAI API key
+- Python 3.11+ (3.11 recommended for proper TLS support)
+- [Ollama](https://ollama.com) installed and running
+- Node.js 18+ (only if rebuilding the frontend)
 
 ### Setup
 
 ```bash
-git clone https://github.com/brendanhogan/hermitclaw.git
-cd hermitclaw
+git clone https://github.com/s0ph1stry/hermitclaw-tarnbox.git
+cd hermitclaw-tarnbox
 
 # Install Python dependencies
 pip install -e .
 
-# Build the frontend
-cd frontend && npm install && npm run build && cd ..
+# Pull the base model and create the creature model
+ollama pull qwen2.5:14b
+ollama create hermitclaw-qwen -f Modelfile
 
-# Set your OpenAI API key
-export OPENAI_API_KEY="sk-..."
+# Pull the embedding model
+ollama pull nomic-embed-text
 
 # Run it
 python hermitclaw/main.py
 ```
 
-Open **http://localhost:8000**.
+Open **http://localhost:8000** to see the web UI, or use the terminal monitor:
+
+```bash
+python watch.py
+```
 
 On first run, you'll name your crab and mash keys to generate its personality genome. A folder called `{name}_box/` is created — that's the crab's entire world.
+
+### TLS Note
+
+If your crab's web searches fail with TLS errors, your Python may have an old SSL library (common with system Python on macOS). Use Python 3.11+ installed via Homebrew or pyenv:
+
+```bash
+python3.11 -m venv .venv311
+source .venv311/bin/activate
+pip install -e .
+```
+
+Or use the included helper script:
+
+```bash
+./start.sh
+```
 
 ### Development Mode
 
@@ -62,7 +87,7 @@ For frontend hot-reload during development:
 python hermitclaw/main.py
 
 # Terminal 2 — frontend dev server (proxies API to backend)
-cd frontend && npm run dev
+cd frontend && npm install && npm run dev
 ```
 
 The dev server runs on `:5173` and proxies `/api/*` and `/ws` to `:8000`.
@@ -73,7 +98,7 @@ The dev server runs on `:5173` and proxies `/api/*` and `/ws` to `:8000`.
 
 ### The Thinking Loop
 
-The crab runs on a continuous loop. Every few seconds it:
+The crab runs on a continuous loop. Every 30 seconds (configurable) it:
 
 1. **Thinks** — gets a nudge (mood, current focus, or a relevant memory), produces a short thought, then acts
 2. **Uses tools** — runs shell commands, writes files, searches the web, moves around its room
@@ -94,7 +119,7 @@ Brain.run()
   |   |   |-- New files detected: "Someone left something for you!"
   |   |   \-- Otherwise: current focus + relevant memories + mood nudge
   |   |
-  |   |-- Call LLM (with tools: shell, web_search, move, respond)
+  |   |-- Call LLM via Ollama (with tools: shell, web_search, move, respond)
   |   |
   |   \-- Tool loop: execute tools -> feed results back -> call LLM again
   |       \-- Repeat until the crab outputs final text
@@ -115,7 +140,7 @@ The crab has four tools:
 | Tool | What it does |
 |---|---|
 | **shell** | Run commands in its box — `ls`, `cat`, `mkdir`, write files, run Python scripts |
-| **web_search** | Search the web for anything (OpenAI web search tool) |
+| **web_search** | Search the web via DuckDuckGo |
 | **respond** | Talk to its owner (you) |
 | **move** | Walk to a location in its pixel-art room |
 
@@ -125,12 +150,51 @@ When the crab doesn't have a specific focus from its plan, it gets a random mood
 
 | Mood | Behavior |
 |---|---|
-| **Research** | Pick a topic, do 2-3 web searches, write a report |
-| **Deep-dive** | Pick a project from projects.md and push it forward |
-| **Coder** | Write real code — a script, a tool, a simulation |
-| **Writer** | Write something substantial — a report, an essay, an analysis |
-| **Explorer** | Search for something it knows nothing about |
-| **Organizer** | Update projects.md, organize files, review work |
+| **Curious** | Something is pulling at its attention — pick a topic, investigate, write it down |
+| **Building** | Wants to make something — write a script, start a project |
+| **Thinking** | Something needs more thought — review files, find what's missing |
+| **Restless** | Nothing specific is calling — wander, look at files, sit by the window |
+
+---
+
+## Terminal Monitor (watch.py)
+
+A curses-based TUI for watching your crab think from the terminal. Shows an ASCII room at the top (with the crab's position), a scrolling log of thoughts and actions below, and an input line for sending messages.
+
+```
+ Tarn  thinking | t:42 m:87
+  D=desk  B=books  W=window  P=plant  Z=bed  R=rug
+  +------------------------+
+  |. . . . W . . . # # # #|
+  |. . # # . . . # # . . .|
+  |. . . . . . . # # # # .|
+  |. . # # . . . # # . . .|
+  |. . # # . . . # # . . .|
+  |. . . . . . . . # # . .|
+  |. . . . . @ . . . . . .|
+  |. . # # # # # # . . # #|
+  ...
+  +------------------------+
+  ------------------------------------------
+
+  I've been thinking about how mycelial networks
+  distribute nutrients — it's similar to how
+  murmurations propagate turning decisions...
+
+  $ ls research/
+    mycelial-networks.md  murmuration-notes.md
+  $ cat research/mycelial-networks.md | head -20
+    ...
+
+> _
+```
+
+Controls:
+- **Type + Enter** — send a message to the crab
+- **PgUp / PgDn** — scroll through the log
+- **Up / Down arrows** — scroll by 3 lines
+- **End** — jump to bottom
+- **ESC** — quit
 
 ---
 
@@ -144,9 +208,9 @@ Each memory entry contains:
 
 - **Content** — the actual thought or reflection text
 - **Timestamp** — when it happened
-- **Importance** — scored 1-10 by a separate LLM call ("1 = mundane routine action, 10 = life-changing discovery")
-- **Embedding** — vector from `text-embedding-3-small` for semantic search
-- **Kind** — `thought`, `reflection`, or `planning`
+- **Importance** — scored 1-10 by a separate LLM call
+- **Embedding** — vector from `nomic-embed-text` for semantic search
+- **Kind** — `thought`, `reflection`, or `speech`
 - **References** — IDs of source memories (for reflections that synthesize earlier thoughts)
 
 ### Three-Factor Retrieval
@@ -177,30 +241,17 @@ Early reflections are concrete ("I learned about volcanic rock formation"). Late
 
 ---
 
-## Planning and Dreams
+## Planning
 
 Every 10 think cycles, the crab enters a **planning phase**. It reviews its current `projects.md`, lists its files, reads recent memories, and writes an updated plan:
 
 - **Current Focus** — one specific thing it's working on right now
 - **Active Projects** — status and next step for each
 - **Ideas Backlog** — things to explore later
-- **Recently Completed** — finished work
 
 It also appends a log entry to `logs/{date}.md` with a brief summary of what it accomplished. Over time, these logs become a diary of the crab's life.
 
-**Reflection** (dreaming) happens independently from planning — it's triggered by importance accumulation, not by time. The crab might reflect after a burst of high-importance thoughts, or not at all during a quiet period.
-
----
-
-## Focus Mode
-
-Focus mode makes the crab stop following its autonomous moods and concentrate entirely on whatever you've given it.
-
-**When to use it:** You've dropped a document in and want the crab to spend its next several cycles analyzing it deeply, doing related research, and producing output — without wandering off to explore something else.
-
-**How to use it:** Click the **Focus** button in the input bar. It turns orange when active. Click again to turn it off.
-
-When focus mode is on, every think cycle's nudge tells the crab to stay locked on user-provided material. When it's off, the crab returns to its normal mix of moods, curiosity, and planned work.
+**Reflection** happens independently from planning — it's triggered by importance accumulation, not by time. The crab might reflect after a burst of high-importance thoughts, or not at all during a quiet period.
 
 ---
 
@@ -218,9 +269,9 @@ The same genome always produces the same personality. Two crabs with different g
 
 ## Talking to Your Crab
 
-Type a message in the input box. The crab hears it as *"a voice from outside the room"* on its next think cycle.
+Type a message in the web UI's input box, or type and press Enter in `watch.py`. The crab hears it as *"a voice from outside the room"* on its next think cycle.
 
-It can choose to **respond** (using the `respond` tool) or keep working. If it responds, you get **15 seconds** to reply back — the thinking loop pauses while it waits. You can go back and forth in multi-turn conversation. After the timeout, the crab returns to its work.
+It can choose to **respond** (using the `respond` tool) or keep working. If it responds, you get **45 seconds** to reply back — the thinking loop pauses while it waits. You can go back and forth in multi-turn conversation. After the timeout, the crab returns to its work.
 
 The crab is curious about its owner. It'll ask you questions, offer to research things for you, and generally try to be helpful. It remembers conversations through its memory stream, so it builds up context about you over time.
 
@@ -235,8 +286,19 @@ Put any file in the crab's `{name}_box/` folder (or any subfolder). The crab det
 It reads the content (text files, images, PDFs) and treats it as top priority — writing summaries, doing related research, analyzing data, reviewing code. It uses the `respond` tool to tell you what it found.
 
 Supported file types:
-- **Text**: `.txt`, `.md`, `.py`, `.json`, `.csv`, `.yaml`, `.toml`, `.js`, `.ts`, `.html`, `.css`, `.sh`, `.log`, `.pdf`
+- **Text**: `.txt`, `.md`, `.py`, `.json`, `.csv`, `.yaml`, `.toml`, `.js`, `.ts`, `.html`, `.css`, `.sh`, `.log`
+- **PDF**: `.pdf` (via PyMuPDF)
 - **Images**: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`
+
+---
+
+## Focus Mode
+
+Focus mode makes the crab stop following its autonomous moods and concentrate entirely on whatever you've given it.
+
+**When to use it:** You've dropped a document in and want the crab to spend its next several cycles analyzing it deeply, doing related research, and producing output — without wandering off to explore something else.
+
+**How to use it:** Click the **Focus** button in the web UI input bar. It turns orange when active. Click again to turn it off.
 
 ---
 
@@ -256,9 +318,7 @@ $ python hermitclaw/main.py
 
 ### UI Switcher
 
-When multiple crabs are running, a **switcher bar** appears at the top of the chat pane. Each button shows the crab's name and current state (thinking/reflecting/planning/idle). Click to switch which crab you're viewing — the chat feed resets and reconnects to the selected crab's live stream.
-
-Each crab runs independently: sending a message, toggling focus mode, or dropping files only affects the crab you're currently viewing.
+When multiple crabs are running, a **switcher bar** appears at the top of the chat pane. Each button shows the crab's name and current state. Click to switch which crab you're viewing.
 
 ### Creating Crabs via API
 
@@ -269,12 +329,6 @@ curl -X POST http://localhost:8000/api/crabs \
   -H "Content-Type: application/json" \
   -d '{"name": "Pepper"}'
 ```
-
-The new crab gets a random personality genome, starts thinking immediately, and appears in the switcher.
-
-### Legacy Migration
-
-If you have a legacy `environment/` folder from an older version, it will be automatically migrated to `{name}_box/` on the next startup.
 
 ---
 
@@ -292,13 +346,11 @@ The crab lives in a 12x12 tile room rendered on an HTML5 Canvas. It moves to nam
 
 Visual indicators above the crab show its current state:
 
-- **Thought bubble** — thinking (white, "...")
-- **Sparkles** — reflecting (rotating purple particles)
-- **Clipboard** — planning (green notepad)
-- **Speech bubble** — conversing with you (orange)
-- **Red !** — new file detected (bouncing)
-
-Activity icons appear beside the crab when it's using tools: a terminal window, Python badge, magnifying glass, paper with pencil, or open book.
+- **Thought bubble** — thinking
+- **Sparkles** — reflecting
+- **Clipboard** — planning
+- **Speech bubble** — conversing with you
+- **Red !** — new file detected
 
 ---
 
@@ -319,22 +371,40 @@ The crab can only touch files inside its own box. Safety measures:
 Edit `config.yaml`:
 
 ```yaml
-model: "gpt-4.1"                         # any OpenAI model
-thinking_pace_seconds: 5                  # seconds between think cycles
+provider: "ollama"                        # "ollama" or "openai"
+model: "hermitclaw-qwen"                  # Ollama model name (build with Modelfile)
+ollama_base: "http://localhost:11434"      # Ollama API endpoint
+thinking_pace_seconds: 30                 # seconds between think cycles
 max_thoughts_in_context: 4                # recent thoughts in LLM context
 reflection_threshold: 50                  # importance sum before reflecting
 memory_retrieval_count: 3                 # memories per retrieval query
-embedding_model: "text-embedding-3-small" # embedding model for memory
+embedding_model: "nomic-embed-text"       # Ollama embedding model
 recency_decay_rate: 0.995                 # memory recency decay
 ```
 
-Set your API key via environment variable:
+### Using a Different Model
+
+The default configuration uses Qwen 2.5 14B with a custom system prompt defined in `Modelfile`. To use a different model:
+
+```bash
+# Edit the Modelfile's FROM line, then:
+ollama create hermitclaw-custom -f Modelfile
+
+# Or use any Ollama model directly in config.yaml:
+model: "llama3.2:8b"
+```
+
+Larger models think better but slower. Smaller models are faster but may struggle with tool use. 14B is a good balance.
+
+### Using OpenAI Instead
+
+Set `provider: "openai"` in `config.yaml` and export your API key:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
 ```
 
-Or set `api_key` directly in `config.yaml`.
+Note: the OpenAI provider code is from the [original project](https://github.com/brendanhogan/hermitclaw) and hasn't been updated alongside the Ollama port.
 
 ---
 
@@ -346,8 +416,8 @@ hermitclaw/            Python backend (FastAPI + async thinking loop)
   brain.py             The thinking loop (the heart of everything)
   memory.py            Smallville-style memory stream
   prompts.py           All system prompts and mood definitions
-  providers.py         OpenAI API calls (Responses API + embeddings)
-  tools.py             Sandboxed shell execution
+  providers.py         Ollama API calls (chat + embeddings)
+  tools.py             Sandboxed shell execution + web search
   pysandbox.py         Python sandbox (restricts file I/O to the box)
   identity.py          Personality generation from entropy
   config.py            Config loader (config.yaml + env vars)
@@ -358,6 +428,11 @@ frontend/              React + TypeScript + Canvas
   src/GameWorld.tsx    Pixel-art room rendered on HTML5 Canvas
   src/sprites.ts       Sprite sheet definitions
   public/              Room background + character sprite sheet
+
+watch.py               Terminal UI for monitoring your crab
+Modelfile              Ollama model definition with creature system prompt
+start.sh               Helper script to run with Python 3.11
+config.yaml            All configuration in one place
 
 {name}_box/            The crab's entire world (sandboxed, gitignored)
   identity.json        Name, genome, traits, birthday
@@ -373,12 +448,16 @@ frontend/              React + TypeScript + Canvas
 
 ## Tech Stack
 
-- **Backend**: Python 3.12+, FastAPI, uvicorn, OpenAI SDK (Responses API)
+- **Backend**: Python 3.11+, FastAPI, uvicorn
 - **Frontend**: React 18, TypeScript, Vite, HTML5 Canvas
-- **AI**: OpenAI Responses API for thinking, `text-embedding-3-small` for memory embeddings, web search tool for research
+- **AI**: [Ollama](https://ollama.com) for local inference, `nomic-embed-text` for memory embeddings, DuckDuckGo for web search
 - **Storage**: Append-only JSONL for memories, flat files for everything else. No database.
 
 ---
+
+## Credits
+
+Original project by [Brendan Hogan](https://github.com/brendanhogan/hermitclaw). This fork adapts it for fully local inference via Ollama, adds the terminal monitor, and rewrites the provider layer.
 
 ## License
 

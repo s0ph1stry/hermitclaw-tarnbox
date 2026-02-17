@@ -1,5 +1,7 @@
 """FastAPI web server — API + WebSocket + serves frontend."""
 
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import json
@@ -24,6 +26,7 @@ brains: dict[str, Brain] = {}  # crab_id -> Brain
 
 def create_app(all_brains: dict[str, Brain]) -> FastAPI:
     """Initialize the app with brains dict. Called from main.py."""
+
     global brains
     brains = all_brains
     return app

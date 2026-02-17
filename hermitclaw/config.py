@@ -11,20 +11,24 @@ def load_config() -> dict:
     with open(CONFIG_PATH, "r") as f:
         config = yaml.safe_load(f)
 
+    # Provider
+    config.setdefault("provider", "ollama")
+    config.setdefault("ollama_base", "http://localhost:11434")
+
     # Environment variable overrides
     config["api_key"] = (
         os.environ.get("OPENAI_API_KEY")
         or config.get("api_key")
     )
-    config["model"] = os.environ.get("HERMITCLAW_MODEL") or config.get("model", "gpt-4o")
+    config["model"] = os.environ.get("HERMITCLAW_MODEL") or config.get("model", "qwen2.5:14b")
 
     # Defaults for numeric settings
-    config.setdefault("thinking_pace_seconds", 45)
-    config.setdefault("max_thoughts_in_context", 20)
+    config.setdefault("thinking_pace_seconds", 30)
+    config.setdefault("max_thoughts_in_context", 4)
     config.setdefault("environment_path", "./environment")
     config.setdefault("reflection_threshold", 50)
     config.setdefault("memory_retrieval_count", 3)
-    config.setdefault("embedding_model", "text-embedding-3-small")
+    config.setdefault("embedding_model", "nomic-embed-text")
     config.setdefault("recency_decay_rate", 0.995)
 
     # Resolve environment_path relative to project root

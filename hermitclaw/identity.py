@@ -1,5 +1,7 @@
 """Identity generation — every crab is unique."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import os
@@ -11,6 +13,7 @@ from hermitclaw.config import config
 
 def identity_path() -> str:
     """Path to identity.json — reads from config each time so it stays current."""
+
     return os.path.join(config["environment_path"], "identity.json")
 
 # --- Trait dimensions (curated lists) ---

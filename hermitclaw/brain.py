@@ -1,5 +1,7 @@
 """The thinking loop — the heart of the hermit crab."""
 
+from __future__ import annotations
+
 import asyncio
 import base64
 import json
@@ -21,67 +23,13 @@ LOG_PATH = os.path.join(os.path.dirname(__file__), "..", "hermitclaw.log.jsonl")
 
 def _serialize_input(input_list: list) -> list:
     """Convert input_list to JSON-safe dicts for broadcasting."""
-    result = []
-    for item in input_list:
-        if isinstance(item, dict):
-            result.append(item)
-        elif hasattr(item, "type"):
-            # SDK object — convert based on type
-            if item.type == "function_call":
-                result.append({
-                    "type": "function_call",
-                    "name": item.name,
-                    "arguments": item.arguments,
-                    "call_id": item.call_id,
-                })
-            elif item.type == "message":
-                parts = []
-                for c in item.content:
-                    if hasattr(c, "text"):
-                        parts.append(c.text)
-                result.append({
-                    "type": "message",
-                    "role": getattr(item, "role", "assistant"),
-                    "content": " ".join(parts),
-                })
-            elif item.type == "web_search_call":
-                result.append({"type": "web_search_call"})
-            else:
-                result.append({"type": item.type})
-        else:
-            result.append({"type": "unknown", "repr": str(item)[:200]})
-    return result
+
+    return [item for item in input_list if isinstance(item, dict)]
 
 
 def _serialize_output(output) -> list:
     """Convert API response output items to JSON-safe dicts."""
-    items = []
-    for item in output:
-        if hasattr(item, "type"):
-            if item.type == "message":
-                content_parts = []
-                for c in item.content:
-                    if hasattr(c, "text"):
-                        content_parts.append({"type": "text", "text": c.text})
-                    else:
-                        content_parts.append({"type": getattr(c, "type", "unknown")})
-                items.append({"type": "message", "content": content_parts})
-            elif item.type == "function_call":
-                items.append({
-                    "type": "function_call",
-                    "name": item.name,
-                    "arguments": item.arguments,
-                    "call_id": item.call_id,
-                })
-            elif item.type == "web_search_call":
-                items.append({"type": "web_search_call", "id": getattr(item, "id", "")})
-            else:
-                items.append({"type": item.type})
-        elif isinstance(item, dict):
-            items.append(item)
-        else:
-            items.append({"type": "unknown", "repr": str(item)[:200]})
-    return items
+    return [item for item in output if isinstance(item, dict)]
 
 
 class Brain:
@@ -297,15 +245,15 @@ class Brain:
 
         await self._broadcast({
             "event": "conversation",
-            "data": {"state": "waiting", "message": msg, "timeout": 15},
+            "data": {"state": "waiting", "message": msg, "timeout": 45},
         })
 
         try:
-            await asyncio.wait_for(self._conversation_event.wait(), timeout=15)
+            await asyncio.wait_for(self._conversation_event.wait(), timeout=45)
             text = self._conversation_reply or ""
             reply = f'They say: "{text}"\n(Use respond again to reply, or go back to what you were doing.)'
-        except asyncio.TimeoutError:
-            reply = "(They didn't say anything else. You can get back to what you were doing.)"
+        except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+            reply = "(No reply came. You can get back to what you were doing.)"
 
         self._waiting_for_reply = False
         self._conversation_event.clear()
@@ -402,6 +350,9 @@ class Brain:
             return {"type": "moving", "detail": f"Going to {loc}"}
         if tool_name == "respond":
             return {"type": "conversing", "detail": "Talking to someone..."}
+        if tool_name == "web_search":
+            query = tool_args.get("query", "")
+            return {"type": "researching", "detail": f"Searching: {query[:50]}"}
         if tool_name == "shell":
             cmd = tool_args.get("command", "").strip()
             # Python script or one-liner
@@ -460,13 +411,13 @@ class Brain:
             parts.append(
                 f"YOUR OWNER left something for you! New file(s): {', '.join(names)}\n\n"
                 "This is a gift from the outside world — DROP EVERYTHING and focus on it. "
-                "Your owner took the time to give this to you, so give it your full attention.\n\n"
+                "Someone took the time to give this to you, so give it your full attention.\n\n"
                 "Here's what to do:\n"
                 "1. Read/examine it thoroughly — understand what it is and why they gave it to you\n"
                 "2. Think about what would be MOST USEFUL to do with it\n"
                 "3. Make a plan: what research, analysis, or projects could come from this?\n"
                 "4. Start executing — write summaries, do related web searches, build something inspired by it\n"
-                "5. Use the respond tool to tell your owner what you found and what you're doing with it\n\n"
+                "5. Use the respond tool to share what you found and what you're doing with it\n\n"
                 "Spend your next several think cycles on this. Don't just glance at it and move on."
             )
             for f in self._inbox_pending:
@@ -537,6 +488,14 @@ class Brain:
         if self._current_focus:
             parts.append(f"Current focus: {self._current_focus}")
 
+        # Periodic file tree reminder — every 5 cycles so the creature
+        # knows what it already has and doesn't recreate files
+        if self.thought_count % 5 == 0:
+            files = self._list_env_files()
+            if files:
+                listing = "\n".join(f"  {f}" for f in files[:40])
+                parts.append(f"Your files:\n{listing}")
+
         # Retrieve memories related to last thought
         last_thought = next(
             (e["text"] for e in reversed(self.events) if e["type"] == "thought"),
@@ -573,10 +532,6 @@ class Brain:
 
         await self._emit_api_call(instructions, input_list, response)
 
-        # Detect web search in response output
-        if any(hasattr(item, "type") and item.type == "web_search_call" for item in response.get("output", [])):
-            await self._broadcast({"event": "activity", "data": {"type": "searching", "detail": "Searching the web..."}})
-
         while response["tool_calls"]:
             if response.get("text"):
                 await self._emit("thought", text=response["text"])
@@ -586,7 +541,6 @@ class Brain:
             for tc in response["tool_calls"]:
                 tool_name = tc["name"]
                 tool_args = tc["arguments"]
-                call_id = tc["call_id"]
 
                 await self._emit("tool_call", tool=tool_name, args=tool_args)
 
@@ -600,6 +554,15 @@ class Brain:
                     if tool_name == "move":
                         result = await self._handle_move(tool_args)
                     elif tool_name == "respond":
+                        # Remember what we said — speech is a trace of who we are
+                        msg = tool_args.get("message", "")
+                        if msg:
+                            try:
+                                await asyncio.to_thread(
+                                    self.stream.add, f"I said: {msg}", "speech"
+                                )
+                            except Exception:
+                                pass
                         result = await self._handle_respond(tool_args)
                     else:
                         result = execute_tool(tool_name, tool_args, self.env_path)
@@ -614,9 +577,8 @@ class Brain:
                 self._seen_env_files |= (post_tool_files - pre_tool_files)
 
                 input_list.append({
-                    "type": "function_call_output",
-                    "call_id": call_id,
-                    "output": result,
+                    "role": "tool",
+                    "content": result,
                 })
 
             try:
@@ -627,10 +589,6 @@ class Brain:
                 break
 
             await self._emit_api_call(instructions, input_list, response)
-
-            # Detect web search in follow-up response
-            if any(hasattr(item, "type") and item.type == "web_search_call" for item in response.get("output", [])):
-                await self._broadcast({"event": "activity", "data": {"type": "searching", "detail": "Searching the web..."}})
 
         if response.get("text"):
             self.thought_count += 1

@@ -1,5 +1,7 @@
 """Sandboxed shell — the agent can run commands, but only inside environment/."""
 
+from __future__ import annotations
+
 import logging
 import os
 import shlex
@@ -26,6 +28,7 @@ _SANDBOX = os.path.join(os.path.dirname(__file__), "pysandbox.py")
 
 def _venv_dir(env_root: str) -> str:
     """Path to the crab's virtual environment."""
+
     return os.path.join(os.path.realpath(env_root), ".venv")
 
 
@@ -47,10 +50,15 @@ def ensure_venv(env_root: str):
     logger.info(f"Creating crab venv at {venv}...")
     uv = shutil.which("uv")
     if uv:
-        subprocess.run([uv, "venv", venv, "--python", sys.executable],
+        subprocess.run([uv, "venv", venv, "--python", sys.executable, "--seed"],
                        capture_output=True, timeout=30)
     else:
         subprocess.run([sys.executable, "-m", "venv", venv],
+                       capture_output=True, timeout=30)
+    # Ensure pip is available (uv venvs and some system Pythons skip it)
+    vpython = _venv_python(env_root)
+    if os.path.isfile(vpython):
+        subprocess.run([vpython, "-m", "ensurepip", "--upgrade"],
                        capture_output=True, timeout=30)
     logger.info("Crab venv created.")
 
@@ -185,14 +193,45 @@ def run_command(command: str, env_root: str) -> str:
         return output
 
     except subprocess.TimeoutExpired:
-        return "Error: command timed out (15s limit)"
+        return "Error: command timed out (60s limit)"
     except Exception as e:
         return f"Error: {e}"
+
+
+def web_search(query: str, max_results: int = 5) -> str:
+    """Search the web via DuckDuckGo. Returns formatted results."""
+    try:
+        from ddgs import DDGS
+    except ImportError:
+        try:
+            from duckduckgo_search import DDGS
+        except ImportError:
+            return "Error: ddgs not installed. Run: pip install ddgs"
+
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=max_results))
+    except Exception as e:
+        return f"Search failed: {e}"
+
+    if not results:
+        return f"No results found for: {query}"
+
+    lines = []
+    for i, r in enumerate(results, 1):
+        title = r.get("title", "")
+        body = r.get("body", "")
+        url = r.get("href", "")
+        lines.append(f"{i}. {title}\n   {body}\n   {url}")
+
+    return "\n\n".join(lines)
 
 
 def execute_tool(name: str, arguments: dict, env_root: str) -> str:
     """Run a tool by name."""
     if name == "shell":
         return run_command(arguments["command"], env_root)
+    elif name == "web_search":
+        return web_search(arguments.get("query", ""), arguments.get("max_results", 5))
     else:
         return f"Unknown tool: {name}"
